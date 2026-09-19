@@ -1,0 +1,4 @@
+{
+  "version":2,
+  "functions":{"api/tryon.js":{"maxDuration":60}}
+}

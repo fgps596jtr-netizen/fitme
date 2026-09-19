@@ -7,21 +7,21 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="FitMe">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <title>FitMe</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f5f5f7;color:#111;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif}
-main{max-width:520px;margin:auto;padding:28px 18px 42px}
-h1{font-size:38px;letter-spacing:-2px;margin:4px 0}.sub{color:#6b6b70;margin:0 0 24px}
+main{max-width:520px;margin:auto;padding:28px 18px 42px}h1{font-size:38px;letter-spacing:-2px;margin:4px 0}.sub{color:#6b6b70;margin:0 0 24px}
 .card{background:#fff;border-radius:24px;padding:18px;margin:14px 0;box-shadow:0 6px 24px rgba(0,0,0,.06)}
 .step{font-size:13px;font-weight:800;text-transform:uppercase;color:#777;letter-spacing:.7px;margin-bottom:9px}
 .upload{border:1.5px dashed #c7c7cc;border-radius:18px;padding:22px;text-align:center;font-weight:700;display:block;cursor:pointer}
 input{display:none}.preview{display:none;width:100%;max-height:390px;object-fit:cover;border-radius:16px;margin-top:12px}
-button{width:100%;border:0;border-radius:17px;padding:17px;background:#111;color:#fff;font-size:17px;font-weight:800}
-button:disabled{opacity:.35}.result{display:none;position:relative;overflow:hidden;border-radius:18px;background:#eee}
-.result #personOut{width:100%;display:block}.overlay{position:absolute;left:18%;top:18%;width:64%;opacity:.78;mix-blend-mode:multiply;display:none}
+button{width:100%;border:0;border-radius:17px;padding:17px;background:#111;color:#fff;font-size:17px;font-weight:800}button:disabled{opacity:.35}
+.result{display:none;overflow:hidden;border-radius:18px;background:#eee}.result img{width:100%;display:block}
 .small{font-size:13px;color:#777;line-height:1.45}.status{margin:10px 0 0;font-weight:600}
+select{width:100%;padding:14px;border-radius:14px;border:1px solid #ddd;background:#fff;font-size:16px}
+.spinner{display:none;margin:14px auto;width:28px;height:28px;border:3px solid #ddd;border-top-color:#111;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -43,33 +43,78 @@ button:disabled{opacity:.35}.result{display:none;position:relative;overflow:hidd
 <img id="garmentPrev" class="preview" alt="Le vêtement">
 </section>
 
+<section class="card">
+<div class="step">Type de vêtement</div>
+<select id="garmentType">
+<option value="upper_body">Haut — t-shirt, pull, veste</option>
+<option value="lower_body">Bas — jean, pantalon, short, jupe</option>
+<option value="entire_outfit">Tenue complète</option>
+</select>
+</section>
+
 <button id="try" disabled>✨ Essayer sur moi</button>
+<div id="spinner" class="spinner"></div>
 
 <section class="card">
-<div class="step">Aperçu</div>
-<div id="result" class="result">
-<img id="personOut" alt="Aperçu sur toi">
-<img id="overlay" class="overlay" alt="">
-</div>
+<div class="step">Résultat IA</div>
+<div id="result" class="result"><img id="resultImg" alt="Résultat de l'essayage IA"></div>
 <p id="status" class="status">Ajoute les deux photos.</p>
-<p class="small">Cette version est prête pour l'écran d'accueil iPhone. Le moteur IA photoréaliste peut ensuite être branché pour ajuster automatiquement le vêtement à ta morphologie.</p>
+<p class="small">Les photos sont envoyées au moteur d'essayage IA uniquement lorsque tu appuies sur « Essayer sur moi ».</p>
 </section>
 </main>
+
 <script>
 const $=id=>document.getElementById(id);
-let p="",g="";
-function pick(id,prev,cb){
-  $(id).addEventListener("change",e=>{
+let personData="",garmentData="";
+
+async function compressImage(file,maxSide=1600,quality=.82){
+  const bitmap=await createImageBitmap(file);
+  const scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height));
+  const w=Math.max(1,Math.round(bitmap.width*scale)),h=Math.max(1,Math.round(bitmap.height*scale));
+  const canvas=document.createElement("canvas"); canvas.width=w; canvas.height=h;
+  canvas.getContext("2d").drawImage(bitmap,0,0,w,h);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg",quality);
+}
+
+function pick(id,prev,kind){
+  $(id).addEventListener("change",async e=>{
     const f=e.target.files?.[0]; if(!f)return;
-    const u=URL.createObjectURL(f); cb(u); $(prev).src=u; $(prev).style.display="block";
-    $("try").disabled=!(p&&g); $("status").textContent=p&&g?"Les deux photos sont prêtes.":"Il manque une photo.";
+    $(prev).src=URL.createObjectURL(f); $(prev).style.display="block";
+    $(id).disabled=true;
+    try{
+      const data=await compressImage(f);
+      if(kind==="person") personData=data; else garmentData=data;
+      $(id).disabled=false;
+      $("try").disabled=!(personData&&garmentData);
+      $("status").textContent=personData&&garmentData?"Les deux photos sont prêtes.":"Il manque une photo.";
+    }catch(err){
+      $(id).disabled=false; $("status").textContent="Impossible de préparer cette image.";
+    }
   });
 }
-pick("person","personPrev",u=>p=u); pick("garment","garmentPrev",u=>g=u);
-$("try").onclick=()=>{
-  $("personOut").src=p; $("overlay").src=g; $("overlay").style.display="block";
-  $("result").style.display="block"; $("status").textContent="Aperçu généré.";
-  $("result").scrollIntoView({behavior:"smooth",block:"center"});
+pick("person","personPrev","person"); pick("garment","garmentPrev","garment");
+
+$("try").onclick=async()=>{
+  if(!personData||!garmentData)return;
+  $("try").disabled=true; $("spinner").style.display="block";
+  $("result").style.display="none"; $("status").textContent="L'IA prépare ton essayage…";
+  try{
+    const res=await fetch("/api/tryon",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({person:personData,garment:garmentData,garmentType:$("garmentType").value})
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||"La génération a échoué.");
+    $("resultImg").src=data.imageUrl; $("result").style.display="block";
+    $("status").textContent="Essayage IA terminé ✨";
+    $("result").scrollIntoView({behavior:"smooth",block:"center"});
+  }catch(err){
+    $("status").textContent=err.message||"Une erreur est survenue.";
+  }finally{
+    $("try").disabled=false; $("spinner").style.display="none";
+  }
 };
 </script>
-</body></html>
+</body>
+</html>

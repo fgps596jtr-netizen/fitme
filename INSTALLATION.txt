@@ -1,0 +1,8 @@
+FitMe — version IA
+1) Remplace index.html et manifest.json dans le dépôt GitHub.
+2) Ajoute package.json et vercel.json à la racine.
+3) Crée le dossier api et ajoute api/tryon.js.
+4) Dans Vercel, importe le dépôt GitHub.
+5) Ajoute la variable d'environnement MAGIC_HOUR_API_KEY avec ta clé Magic Hour.
+6) Déploie.
+Ne mets jamais la clé API dans GitHub ni dans index.html.
