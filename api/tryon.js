@@ -5,15 +5,21 @@ import { Client } from "magic-hour";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Méthode non autorisée" });
+    return res.status(405).json({
+      error: "Méthode non autorisée"
+    });
   }
 
   try {
-    const { person, garment, garmentType = "upper_body" } = req.body;
+    const {
+      person,
+      upper,
+      lower
+    } = req.body;
 
-    if (!person || !garment) {
+    if (!person || (!upper && !lower)) {
       return res.status(400).json({
-        error: "Il faut envoyer une photo de toi et une photo du vêtement."
+        error: "Il faut envoyer une photo de toi et au moins un vêtement."
       });
     }
 
@@ -25,58 +31,124 @@ export default async function handler(req, res) {
 
     const tempDir = os.tmpdir();
 
-    const personPath = path.join(tempDir, "person.jpg");
-    const garmentPath = path.join(tempDir, "garment.jpg");
-
-    fs.writeFileSync(
-      personPath,
-      Buffer.from(person.replace(/^data:image\/\w+;base64,/, ""), "base64")
-    );
-
-    fs.writeFileSync(
-      garmentPath,
-      Buffer.from(garment.replace(/^data:image\/\w+;base64,/, ""), "base64")
-    );
-
     const client = new Client({
       token: process.env.MAGIC_HOUR_API_KEY
     });
 
-    const result = await client.v1.aiClothesChanger.generate(
-      {
-        name: "FitMe - Essayage virtuel",
-        assets: {
-          personFilePath: personPath,
-          garmentFilePath: garmentPath,
-          garmentType: garmentType
-        }
-      },
-      {
-        waitForCompletion: true,
-        downloadOutputs: true,
-        downloadDirectory: tempDir
-      }
-    );
+    function saveImage(data, filename) {
+      const filePath = path.join(tempDir, filename);
 
-    if (!result.downloadedPaths || result.downloadedPaths.length === 0) {
-      return res.status(500).json({
-        error: "Magic Hour n'a pas retourné d'image."
-      });
+      const base64 = data.replace(
+        /^data:image\/\w+;base64,/,
+        ""
+      );
+
+      fs.writeFileSync(
+        filePath,
+        Buffer.from(base64, "base64")
+      );
+
+      return filePath;
     }
 
-    const outputPath = result.downloadedPaths[0];
-    const imageBuffer = fs.readFileSync(outputPath);
+    // Photo originale de la personne
+    let currentPersonPath = saveImage(
+      person,
+      "fitme-person.jpg"
+    );
+
+    // Fonction qui applique un vêtement
+    async function applyGarment(
+      garmentData,
+      garmentType,
+      label
+    ) {
+      const garmentPath = saveImage(
+        garmentData,
+        `fitme-${label}.jpg`
+      );
+
+      const result =
+        await client.v1.aiClothesChanger.generate(
+          {
+            name: `FitMe - ${label}`,
+
+            assets: {
+              personFilePath:
+                currentPersonPath,
+
+              garmentFilePath:
+                garmentPath,
+
+              garmentType:
+                garmentType
+            }
+          },
+          {
+            waitForCompletion: true,
+
+            downloadOutputs: true,
+
+            downloadDirectory:
+              tempDir
+          }
+        );
+
+      if (
+        !result.downloadedPaths ||
+        result.downloadedPaths.length === 0
+      ) {
+        throw new Error(
+          `Magic Hour n'a pas retourné d'image pour le ${label}.`
+        );
+      }
+
+      // Le résultat devient la nouvelle photo
+      // sur laquelle on applique éventuellement
+      // le vêtement suivant.
+      currentPersonPath =
+        result.downloadedPaths[0];
+    }
+
+    // Appliquer le haut
+    if (upper) {
+      await applyGarment(
+        upper,
+        "upper_body",
+        "haut"
+      );
+    }
+
+    // Puis appliquer le bas
+    if (lower) {
+      await applyGarment(
+        lower,
+        "lower_body",
+        "bas"
+      );
+    }
+
+    // Lire l'image finale
+    const imageBuffer =
+      fs.readFileSync(
+        currentPersonPath
+      );
 
     return res.status(200).json({
-  ok: true,
-  imageUrl: `data:image/png;base64,${imageBuffer.toString("base64")}`
-});
+      ok: true,
+
+      imageUrl:
+        `data:image/png;base64,${imageBuffer.toString("base64")}`
+    });
 
   } catch (error) {
+
     console.error(error);
 
     return res.status(500).json({
-      error: error?.message || "Erreur lors de la génération."
+      error:
+        error?.message ||
+        "Erreur lors de la génération."
     });
   }
 }
