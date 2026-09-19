@@ -68,8 +68,9 @@ export default async function handler(req, res) {
     const imageBuffer = fs.readFileSync(outputPath);
 
     return res.status(200).json({
-      image: `data:image/png;base64,${imageBuffer.toString("base64")}`
-    });
+  ok: true,
+  imageUrl: `data:image/png;base64,${imageBuffer.toString("base64")}`
+});
 
   } catch (error) {
     console.error(error);
